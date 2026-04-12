@@ -23,14 +23,15 @@ DATA_DIR = Path(__file__).parent / "data"
 SETUPS_CSV = DATA_DIR / "setups.csv"
 TRADES_CSV = DATA_DIR / "trades.csv"
 
-TP_PCT = 0.005
-SL_PCT = 0.003  # applied as 1 - SL_PCT
-
 MARKET_OPEN = time(9, 30)
-TIME_STOP = time(9, 35)
+
+STRATEGIES = [
+    {"name": "A", "tp": 0.005, "sl": 0.003, "time_stop": time(9, 35)},
+    {"name": "B", "tp": 0.015, "sl": 0.010, "time_stop": time(9, 45)},
+]
 
 TRADE_FIELDS = [
-    "date", "symbol", "gap_pct", "pm_high",
+    "date", "symbol", "strategy", "gap_pct", "pm_high",
     "entry_green", "entry_breaks_pm", "status",
     "entry", "exit", "pnl_pct", "reason",
 ]
@@ -74,66 +75,85 @@ def yahoo_bars(symbol: str) -> list[dict]:
     return bars
 
 
-def simulate(symbol: str, gap_pct: float, target_date) -> dict | None:
+def simulate_all(symbol: str, gap_pct: float, target_date) -> list[dict]:
+    """Return one result row per strategy. Empty list if bars unavailable."""
     bars = yahoo_bars(symbol)
     if not bars:
-        return None
+        return []
 
     day_bars = [b for b in bars if b["dt"].date() == target_date]
     pm_bars = [b for b in day_bars if b["dt"].time() < MARKET_OPEN]
-    rth_bars = [b for b in day_bars if MARKET_OPEN <= b["dt"].time() < TIME_STOP]
-
-    if not pm_bars or not rth_bars:
-        return None
+    if not pm_bars:
+        return []
 
     pm_high = max(b["high"] for b in pm_bars)
-    entry_bar = rth_bars[0]
-    is_green = entry_bar["close"] > entry_bar["open"]
-    breaks_pm = entry_bar["high"] > pm_high
-
     base = {
         "date": target_date.isoformat(),
         "symbol": symbol,
         "gap_pct": gap_pct,
         "pm_high": round(pm_high, 4),
-        "entry_green": is_green,
-        "entry_breaks_pm": breaks_pm,
     }
 
-    if not (is_green and breaks_pm):
-        return {**base, "status": "no_entry", "entry": "", "exit": "", "pnl_pct": "", "reason": ""}
+    results = []
+    for strat in STRATEGIES:
+        rth_bars = [
+            b for b in day_bars
+            if MARKET_OPEN <= b["dt"].time() < strat["time_stop"]
+        ]
+        if not rth_bars:
+            continue
 
-    entry_px = entry_bar["close"]
-    tp = entry_px * (1 + TP_PCT)
-    sl = entry_px * (1 - SL_PCT)
+        entry_bar = rth_bars[0]
+        is_green = entry_bar["close"] > entry_bar["open"]
+        breaks_pm = entry_bar["high"] > pm_high
 
-    exit_px = None
-    reason = None
-    for bar in rth_bars[1:]:
-        hit_tp = bar["high"] >= tp
-        hit_sl = bar["low"] <= sl
-        if hit_tp and hit_sl:
-            exit_px, reason = sl, "both_hit_sl"
-            break
-        if hit_tp:
-            exit_px, reason = tp, "tp"
-            break
-        if hit_sl:
-            exit_px, reason = sl, "sl"
-            break
-    if exit_px is None:
-        exit_px = rth_bars[-1]["close"]
-        reason = "time_stop"
+        row = {
+            **base,
+            "strategy": strat["name"],
+            "entry_green": is_green,
+            "entry_breaks_pm": breaks_pm,
+        }
 
-    pnl = (exit_px - entry_px) / entry_px * 100
-    return {
-        **base,
-        "status": "traded",
-        "entry": round(entry_px, 4),
-        "exit": round(exit_px, 4),
-        "pnl_pct": round(pnl, 3),
-        "reason": reason,
-    }
+        if not (is_green and breaks_pm):
+            results.append({
+                **row,
+                "status": "no_entry",
+                "entry": "", "exit": "", "pnl_pct": "", "reason": "",
+            })
+            continue
+
+        entry_px = entry_bar["close"]
+        tp = entry_px * (1 + strat["tp"])
+        sl = entry_px * (1 - strat["sl"])
+
+        exit_px = None
+        reason = None
+        for bar in rth_bars[1:]:
+            hit_tp = bar["high"] >= tp
+            hit_sl = bar["low"] <= sl
+            if hit_tp and hit_sl:
+                exit_px, reason = sl, "both_hit_sl"
+                break
+            if hit_tp:
+                exit_px, reason = tp, "tp"
+                break
+            if hit_sl:
+                exit_px, reason = sl, "sl"
+                break
+        if exit_px is None:
+            exit_px = rth_bars[-1]["close"]
+            reason = "time_stop"
+
+        pnl = (exit_px - entry_px) / entry_px * 100
+        results.append({
+            **row,
+            "status": "traded",
+            "entry": round(entry_px, 4),
+            "exit": round(exit_px, 4),
+            "pnl_pct": round(pnl, 3),
+            "reason": reason,
+        })
+    return results
 
 
 def load_setups_for(target_date) -> list[dict]:
@@ -151,15 +171,15 @@ def load_setups_for(target_date) -> list[dict]:
     return out
 
 
-def already_simulated(target_date) -> set[str]:
+def already_simulated(target_date) -> set[tuple[str, str]]:
     if not TRADES_CSV.exists():
         return set()
     want = target_date.isoformat()
-    done: set[str] = set()
+    done: set[tuple[str, str]] = set()
     with TRADES_CSV.open() as f:
         for row in csv.DictReader(f):
             if row.get("date") == want:
-                done.add(row["symbol"])
+                done.add((row["symbol"], row.get("strategy", "")))
     return done
 
 
@@ -187,19 +207,22 @@ def main() -> int:
         return 0
 
     done = already_simulated(target_date)
-    pending = [s for s in setups if s["symbol"] not in done]
-    print(f"[info] {target_date}: {len(setups)} setup(s), {len(pending)} pending, {len(done)} already done")
+    print(f"[info] {target_date}: {len(setups)} setup(s), strategies={[s['name'] for s in STRATEGIES]}")
 
-    for s in pending:
-        result = simulate(s["symbol"], float(s["gap_pct"]), target_date)
-        if result is None:
+    for s in setups:
+        rows = simulate_all(s["symbol"], float(s["gap_pct"]), target_date)
+        if not rows:
             print(f"  {s['symbol']}: no bars")
             continue
-        print(
-            f"  {result['symbol']}: {result['status']} "
-            f"{result.get('reason') or ''} pnl={result.get('pnl_pct')}"
-        )
-        append_trade(result)
+        for row in rows:
+            key = (row["symbol"], row["strategy"])
+            if key in done:
+                continue
+            print(
+                f"  [{row['strategy']}] {row['symbol']}: {row['status']} "
+                f"{row.get('reason') or ''} pnl={row.get('pnl_pct')}"
+            )
+            append_trade(row)
 
     return 0
 
