@@ -13,9 +13,14 @@ Paper-only pre-market gap scanner. Logs setups to CSV — **no real orders**.
 3. Workflow runs Mon–Fri at 9:00 / 9:25 / 9:30 / 9:35 ET
 
 ## Files
-- `scanner.py` — scanner
+- `scanner.py` — captures pre-market setups from FMP biggest-gainers
+- `simulate.py` — reads today's setups, pulls Yahoo 1-min bars, simulates entry + TP/SL/time exit
 - `data/setups.csv` — captured setups (auto-committed)
-- `data/trades.csv` — simulated trade results (TODO)
+- `data/trades.csv` — simulated trade results (auto-committed)
+
+## Workflows
+- `scan.yml` — runs scanner at 9:00/9:25/9:30/9:35 ET Mon–Fri
+- `simulate.yml` — runs simulator at 9:40 ET; supports manual backfill via `workflow_dispatch` with a `date` input
 
 ## Local run
 ```bash
