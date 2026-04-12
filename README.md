@@ -15,8 +15,15 @@ Paper-only pre-market gap scanner. Logs setups to CSV — **no real orders**.
 ## Files
 - `scanner.py` — captures pre-market setups from FMP biggest-gainers
 - `simulate.py` — reads today's setups, pulls Yahoo 1-min bars, simulates entry + TP/SL/time exit
+- `backtest.py` — one-shot: last-month retro scan using Yahoo 2m bars over a FMP gainers/losers/actives universe
 - `data/setups.csv` — captured setups (auto-committed)
 - `data/trades.csv` — simulated trade results (auto-committed)
+
+## Run the backtest
+```bash
+FMP_API_KEY=xxx python backtest.py
+```
+Keep the strategy definitions in `backtest.py` and `simulate.py` in sync.
 
 ## Workflows
 - `scan.yml` — runs scanner at 9:00/9:25/9:30/9:35 ET Mon–Fri
