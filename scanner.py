@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 FMP_KEY = os.environ.get("FMP_API_KEY")
-FMP_BASE = "https://financialmodelingprep.com/api/v3"
+FMP_BASE = "https://financialmodelingprep.com/stable"
 DATA_DIR = Path(__file__).parent / "data"
 SETUPS_CSV = DATA_DIR / "setups.csv"
 TRADES_CSV = DATA_DIR / "trades.csv"
@@ -58,17 +58,17 @@ def fmp_get(path: str, **params):
 
 
 def fetch_premarket_gainers() -> list[dict]:
-    """FMP gainers reflects pre-market when called before open."""
-    return fmp_get("/stock_market/gainers")
+    """FMP biggest-gainers reflects pre-market when called before open."""
+    return fmp_get("/biggest-gainers")
 
 
 def fetch_profile(symbol: str) -> dict | None:
-    data = fmp_get(f"/profile/{symbol}")
+    data = fmp_get("/profile", symbol=symbol)
     return data[0] if data else None
 
 
-def fetch_quote(symbol: str) -> dict | None:
-    data = fmp_get(f"/quote/{symbol}")
+def fetch_float(symbol: str) -> dict | None:
+    data = fmp_get("/shares-float", symbol=symbol)
     return data[0] if data else None
 
 
@@ -97,16 +97,16 @@ def scan_setups() -> list[Setup]:
 
         try:
             profile = fetch_profile(symbol)
-            quote = fetch_quote(symbol)
+            float_data = fetch_float(symbol)
         except Exception as e:
             print(f"[warn] {symbol}: {e}", file=sys.stderr)
             continue
-        if not profile or not quote:
+        if not profile:
             continue
 
-        float_shares = profile.get("floatShares") or quote.get("sharesOutstanding") or 0
-        pm_volume = quote.get("volume") or 0
-        prev_close = quote.get("previousClose") or 0
+        float_shares = (float_data or {}).get("floatShares") or 0
+        pm_volume = profile.get("volume") or 0
+        prev_close = round(price - (profile.get("change") or 0), 4)
 
         if float_shares < MIN_FLOAT or pm_volume < MIN_PM_VOLUME:
             continue
