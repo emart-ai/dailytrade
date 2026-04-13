@@ -1,0 +1,9 @@
+date,symbol,strategy,gap_pct,pm_high,entry_green,entry_breaks_pm,status,entry,exit,pnl_pct,reason
+2026-04-13,ALLO,A,47.24,5.0,False,False,no_entry,,,,
+2026-04-13,ALLO,B,47.24,5.0,False,False,no_entry,,,,
+2026-04-13,RVMD,A,34.46,147.746,False,False,no_entry,,,,
+2026-04-13,RVMD,B,34.46,147.746,False,False,no_entry,,,,
+2026-04-13,SYRE,A,25.44,69.0,True,False,no_entry,,,,
+2026-04-13,SYRE,B,25.44,69.0,True,False,no_entry,,,,
+2026-04-13,IDYA,A,20.0,45.0,False,False,no_entry,,,,
+2026-04-13,IDYA,B,20.0,45.0,False,False,no_entry,,,,
